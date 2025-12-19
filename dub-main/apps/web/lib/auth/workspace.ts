@@ -1,0 +1,491 @@
+import { DubApiError, handleAndReturnErrorResponse } from "@/lib/api/errors";
+import { BetaFeatures, PlanProps, WorkspaceWithUsers } from "@/lib/types";
+import { ratelimit } from "@/lib/upstash";
+import { prisma } from "@dub/prisma";
+import { API_DOMAIN, getSearchParams } from "@dub/utils";
+import { waitUntil } from "@vercel/functions";
+import { headers } from "next/headers";
+import { getRatelimitForPlan } from "../api/get-ratelimit-for-plan";
+import {
+  PermissionAction,
+  getPermissionsByRole,
+} from "../api/rbac/permissions";
+import { Scope, mapScopesToPermissions } from "../api/tokens/scopes";
+import { throwIfNoAccess } from "../api/tokens/throw-if-no-access";
+import { normalizeWorkspaceId } from "../api/workspaces/workspace-id";
+import { withAxiomBodyLog } from "../axiom/server";
+import { getFeatureFlags } from "../edge-config";
+import { logConversionEvent } from "../tinybird/log-conversion-events";
+import { hashToken } from "./hash-token";
+import { rateLimitRequest } from "./rate-limit-request";
+import { TokenCacheItem, tokenCache } from "./token-cache";
+import { Session, getSession } from "./utils";
+
+const RATE_LIMIT_FOR_SESSIONS = {
+  api: {
+    limit: 600,
+    interval: "1 m",
+  },
+  analyticsApi: {
+    limit: 12,
+    interval: "1 s",
+  },
+} as const;
+
+interface WithWorkspaceHandler {
+  ({
+    req,
+    params,
+    searchParams,
+    headers,
+    session,
+    workspace,
+    permissions,
+    token,
+  }: {
+    req: Request;
+    params: Record<string, string>;
+    searchParams: Record<string, string>;
+    headers?: Headers;
+    session: Session;
+    permissions: PermissionAction[];
+    workspace: WorkspaceWithUsers;
+    token: TokenCacheItem | null;
+  }): Promise<Response>;
+}
+
+export const withWorkspace = (
+  handler: WithWorkspaceHandler,
+  {
+    requiredPlan = [
+      "free",
+      "pro",
+      "business",
+      "business plus",
+      "business max",
+      "business extra",
+      "advanced",
+      "enterprise",
+    ], // if the action needs a specific plan
+    featureFlag, // if the action needs a specific feature flag
+    requiredPermissions = [],
+    skipPermissionChecks, // if the action doesn't need to check for required permission(s)
+  }: {
+    requiredPlan?: Array<PlanProps>;
+    featureFlag?: BetaFeatures;
+    requiredPermissions?: PermissionAction[];
+    skipPermissionChecks?: boolean;
+  } = {},
+) => {
+  return withAxiomBodyLog(
+    async (
+      req,
+      { params: initialParams }: { params: Promise<Record<string, string>> },
+    ) => {
+      // Clone the request early so handlers can read the body without cloning
+      // Keep the original for withAxiomBodyLog to read in onSuccess
+      const clonedReq = req.clone();
+
+      const params = (await initialParams) || {};
+      const searchParams = getSearchParams(req.url);
+
+      let apiKey: string | undefined = undefined;
+      let requestHeaders = await headers();
+      let responseHeaders = new Headers();
+      let workspace: WorkspaceWithUsers | undefined;
+
+      try {
+        const authorizationHeader = requestHeaders.get("Authorization");
+        if (authorizationHeader) {
+          if (!authorizationHeader.includes("Bearer ")) {
+            throw new DubApiError({
+              code: "bad_request",
+              message:
+                "Misconfigured authorization header. Did you forget to add 'Bearer '? Learn more: https://d.to/auth",
+            });
+          }
+          apiKey = authorizationHeader.replace("Bearer ", "");
+        }
+
+        const url = new URL(req.url || "", API_DOMAIN);
+
+        let session: Session | undefined;
+        let workspaceId: string | undefined;
+        let workspaceSlug: string | undefined;
+        let permissions: PermissionAction[] = [];
+        let token: TokenCacheItem | null = null;
+        const isRestrictedToken = apiKey?.startsWith("dub_");
+
+        const idOrSlug =
+          params?.idOrSlug ||
+          searchParams.workspaceId ||
+          params?.slug ||
+          searchParams.projectSlug;
+
+        /*
+          if there's no workspace ID or slug and it's not a restricted token:
+          - special case for anonymous link creation
+          - missing authorization header
+          - user is still using personal API keys
+        */
+        if (!idOrSlug && !isRestrictedToken) {
+          // special case for anonymous link creation
+          if (
+            requestHeaders.has("dub-anonymous-link-creation") &&
+            ["/links", "/api/links"].includes(req.nextUrl.pathname)
+          ) {
+            // @ts-expect-error
+            return await handler({
+              req: clonedReq,
+              params,
+              searchParams,
+              headers: responseHeaders,
+            });
+            // missing authorization header
+          } else if (!authorizationHeader) {
+            throw new DubApiError({
+              code: "unauthorized",
+              message: "Missing Authorization header.",
+            });
+            // in case user is still using personal API keys
+          } else {
+            throw new DubApiError({
+              code: "not_found",
+              message:
+                "Workspace ID not found. Did you forget to include a `workspaceId` query parameter? It looks like you might be using personal API keys, we also recommend refactoring to workspace API keys: https://d.to/keys",
+            });
+          }
+        }
+
+        if (idOrSlug) {
+          if (idOrSlug.startsWith("ws_")) {
+            workspaceId = normalizeWorkspaceId(idOrSlug);
+          } else {
+            workspaceSlug = idOrSlug;
+          }
+        }
+
+        const isAnalytics =
+          url.pathname.includes("/analytics") ||
+          url.pathname.includes("/events");
+
+        if (apiKey) {
+          const hashedKey = await hashToken(apiKey);
+
+          const cachedToken = await tokenCache.get({
+            hashedKey,
+          });
+
+          if (!cachedToken) {
+            const prismaArgs = {
+              where: {
+                hashedKey,
+              },
+              select: {
+                ...(isRestrictedToken && {
+                  scopes: true,
+                  projectId: true,
+                  expires: true,
+                  installationId: true,
+                  project: {
+                    select: {
+                      plan: true,
+                    },
+                  },
+                }),
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    isMachine: true,
+                  },
+                },
+              },
+            };
+
+            if (isRestrictedToken) {
+              token = await prisma.restrictedToken.findUnique(prismaArgs);
+            } else {
+              token = await prisma.token.findUnique(prismaArgs);
+            }
+          }
+
+          token = cachedToken || token;
+
+          if (!token || !token.user) {
+            throw new DubApiError({
+              code: "unauthorized",
+              message: "Unauthorized: Invalid API key.",
+            });
+          }
+
+          if (token.expires && token.expires < new Date()) {
+            throw new DubApiError({
+              code: "unauthorized",
+              message: "Unauthorized: Access token expired.",
+            });
+          }
+
+          if (!cachedToken) {
+            waitUntil(
+              tokenCache.set({
+                hashedKey,
+                token,
+              }),
+            );
+          }
+
+          // Rate limit checks for API keys
+          let limit = 0;
+          let interval: `${number} s` | `${number} m` = isAnalytics
+            ? "1 s"
+            : "1 m";
+
+          const planLimit = getRatelimitForPlan(token.project?.plan || "free");
+          limit = planLimit.limits[isAnalytics ? "analyticsApi" : "api"];
+
+          const { success, headers } = await rateLimitRequest({
+            identifier: `workspace:ratelimit:${hashedKey}`,
+            requests: limit,
+            interval,
+          });
+
+          if (headers) {
+            for (const [key, value] of Object.entries(headers)) {
+              responseHeaders.set(key, value);
+            }
+          }
+
+          if (!success) {
+            throw new DubApiError({
+              code: "rate_limit_exceeded",
+              message: "Too many requests.",
+            });
+          }
+
+          // Find workspaceId if it's a restricted token
+          if (isRestrictedToken && token?.projectId) {
+            workspaceId = token.projectId;
+          }
+
+          waitUntil(
+            // update last used time for the token (only once every minute)
+            (async () => {
+              try {
+                const { success } = await ratelimit(1, "1 m").limit(
+                  `last-used-${hashedKey}`,
+                );
+
+                if (success) {
+                  const prismaArgs = {
+                    where: {
+                      hashedKey,
+                    },
+                    data: {
+                      lastUsed: new Date(),
+                    },
+                  };
+
+                  if (isRestrictedToken) {
+                    await prisma.restrictedToken.update(prismaArgs);
+                  } else {
+                    await prisma.token.update(prismaArgs);
+                  }
+                }
+              } catch (error) {
+                console.error(error);
+              }
+            })(),
+          );
+
+          session = {
+            user: {
+              id: token.user.id,
+              name: token.user.name || "",
+              email: token.user.email || "",
+              isMachine: token.user.isMachine,
+            },
+          };
+        } else {
+          session = await getSession();
+
+          if (!session?.user?.id) {
+            throw new DubApiError({
+              code: "unauthorized",
+              message: "Unauthorized: Login required.",
+            });
+          }
+
+          // Rate limit checks for session requests
+          const rateLimit =
+            RATE_LIMIT_FOR_SESSIONS[isAnalytics ? "analyticsApi" : "api"];
+
+          const { success, headers } = await rateLimitRequest({
+            identifier: `workspace:ratelimit:${session.user.id}`,
+            requests: rateLimit.limit,
+            interval: rateLimit.interval,
+          });
+
+          for (const [key, value] of Object.entries(headers)) {
+            responseHeaders.set(key, value);
+          }
+
+          if (!success) {
+            throw new DubApiError({
+              code: "rate_limit_exceeded",
+              message: "Too many requests.",
+            });
+          }
+        }
+
+        workspace = (await prisma.project.findUnique({
+          where: {
+            id: workspaceId || undefined,
+            slug: workspaceSlug || undefined,
+          },
+          include: {
+            users: {
+              where: {
+                userId: session.user.id,
+              },
+              select: {
+                role: true,
+                defaultFolderId: true,
+                workspacePreferences: !apiKey, // Hide from API
+              },
+            },
+          },
+        })) as WorkspaceWithUsers;
+
+        // workspace doesn't exist
+        if (!workspace || !workspace.users) {
+          throw new DubApiError({
+            code: "not_found",
+            message: "Workspace not found.",
+          });
+        }
+
+        // workspace exists but user is not part of it
+        if (workspace.users.length === 0) {
+          const pendingInvites = await prisma.projectInvite.findUnique({
+            where: {
+              email_projectId: {
+                email: session.user.email,
+                projectId: workspace.id,
+              },
+            },
+            select: {
+              expires: true,
+            },
+          });
+
+          if (!pendingInvites) {
+            throw new DubApiError({
+              code: "not_found",
+              message: "Workspace not found.",
+            });
+          } else if (pendingInvites.expires < new Date()) {
+            throw new DubApiError({
+              code: "invite_expired",
+              message: "Workspace invite expired.",
+            });
+          } else {
+            throw new DubApiError({
+              code: "invite_pending",
+              message: "Workspace invite pending.",
+            });
+          }
+        }
+
+        // Machine users have owner role by default
+        // Only workspace owners can create machine users
+        if (session.user.isMachine) {
+          workspace.users[0].role = "owner";
+        }
+
+        permissions = getPermissionsByRole(workspace.users[0].role);
+
+        // Find the subset of permissions that the user has access to based on the token scopes
+        if (isRestrictedToken && token?.scopes) {
+          const tokenScopes = (token.scopes.split(" ") as Scope[]) || [];
+          permissions = mapScopesToPermissions(tokenScopes).filter((p) =>
+            permissions.includes(p),
+          );
+        }
+
+        // Check user has permission to make the action
+        if (!skipPermissionChecks) {
+          throwIfNoAccess({
+            permissions,
+            requiredPermissions,
+            workspaceId: workspace.id,
+            externalRequest: Boolean(apiKey),
+          });
+        }
+
+        // beta feature checks
+        if (featureFlag) {
+          let flags = await getFeatureFlags({
+            workspaceId: workspace.id,
+          });
+
+          if (!flags[featureFlag]) {
+            throw new DubApiError({
+              code: "forbidden",
+              message: "Unauthorized: Beta feature.",
+            });
+          }
+        }
+
+        // plan checks
+        if (!requiredPlan.includes(workspace.plan)) {
+          throw new DubApiError({
+            code: "forbidden",
+            message: "Unauthorized: Need higher plan.",
+          });
+        }
+
+        // analytics API checks
+        if (
+          workspace.plan === "free" &&
+          apiKey &&
+          url.pathname.includes("/analytics")
+        ) {
+          throw new DubApiError({
+            code: "forbidden",
+            message: "Analytics API is only available on paid plans.",
+          });
+        }
+
+        return await handler({
+          req: clonedReq,
+          params,
+          searchParams,
+          headers: responseHeaders,
+          session,
+          workspace,
+          permissions,
+          token,
+        });
+      } catch (error) {
+        // Log the conversion events for debugging purposes
+        waitUntil(
+          (async () => {
+            const paths = ["/track/lead", "/track/sale"];
+
+            if (workspace && paths.includes(req.nextUrl.pathname)) {
+              logConversionEvent({
+                workspace_id: workspace.id,
+                path: req.nextUrl.pathname,
+                error: error.message,
+              });
+            }
+          })(),
+        );
+
+        return handleAndReturnErrorResponse(error, responseHeaders);
+      }
+    },
+  );
+};

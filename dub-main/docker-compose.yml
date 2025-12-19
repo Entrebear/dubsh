@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+  app:
+    # Pull and build directly from the GitHub repo (default branch)
+    build:
+      context: https://github.com/Entrebear/dubsh.git
+      dockerfile: Dockerfile
+    container_name: dub-app
+    ports:
+      - "8888:8888"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      # App
+      PORT: 8888
+      NEXT_PUBLIC_APP_URL: http://localhost:8888
+
+      # Database (MySQL)
+      DATABASE_URL: mysql://dub:dub@mysql:3306/dub
+
+      # Redis (local)
+      REDIS_URL: redis://redis:6379
+
+      # ClickHouse (optional; wire later when analytics is moved)
+      CLICKHOUSE_URL: http://clickhouse:8123
+
+      # SMTP: default to Mailpit, or override with your real SMTP provider
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+
+      # Storage
+      # - local: writes to ./storage (mounted volume)
+      # - s3: set STORAGE_DRIVER=s3 and configure the S3 variables below
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /app/storage
+      STORAGE_PUBLIC_URL: http://localhost:8888/storage
+
+      # S3-compatible (only required when STORAGE_DRIVER=s3)
+      STORAGE_ENDPOINT: ""
+      STORAGE_REGION: auto
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_ACCESS_KEY_ID: ""
+      STORAGE_SECRET_ACCESS_KEY: ""
+      STORAGE_PUBLIC_BUCKET: ""
+      STORAGE_PRIVATE_BUCKET: ""
+    volumes:
+      - dub_storage:/app/storage
+
+  mysql:
+    image: mysql:8.0
+    container_name: dub-mysql
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: dub
+      MYSQL_USER: dub
+      MYSQL_PASSWORD: dub
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - dub_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: dub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - dub_redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: dub-clickhouse
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # Native
+    volumes:
+      - dub_clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dub-mailpit
+    ports:
+      - "8025:8025"   # web UI
+      - "1025:1025"   # SMTP
+
+volumes:
+  dub_mysql_data:
+  dub_redis_data:
+  dub_clickhouse_data:
+  dub_storage:
