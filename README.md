@@ -1,83 +1,204 @@
-<a href="https://dub.co">
-  <img alt="Dub is the modern, open-source link attribution platform for short links, conversion tracking, and affiliate programs." src="https://github.com/user-attachments/assets/42cf0705-f5a2-4200-bc4a-c5acf0ba9e15">
-</a>
+# DubSH v1.0.0 — Self‑Hosted Dub with Local Services & Docker Compose
 
-<h3 align="center">Dub</h3>
+DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
-<p align="center">
-    The open-source link attribution platform.
-    <br />
-    <a href="https://dub.co"><strong>Learn more »</strong></a>
-    <br />
-    <br />
-    <a href="#introduction"><strong>Introduction</strong></a> ·
-    <a href="#tech-stack"><strong>Tech Stack</strong></a> ·
-    <a href="#self-hosting"><strong>Self-hosting</strong></a> ·
-    <a href="#contributing"><strong>Contributing</strong></a>
-</p>
+**Upstream basis:** Based on **dubinc/dub** (branch `main`) as of **2025‑12‑18** (commit **a4ec17b**).  
+(That commit/date is the point-in-time reference for “upstream Dub” used for this DubSH release.)
 
-<p align="center">
-  <a href="https://twitter.com/dubdotco">
-    <img src="https://img.shields.io/twitter/follow/dubdotco?style=flat&label=%40dubdotco&logo=twitter&color=0bf&logoColor=fff" alt="Twitter" />
-  </a>
-  <a href="https://news.ycombinator.com/item?id=32939407"><img src="https://img.shields.io/badge/Hacker%20News-255-%23FF6600" alt="Hacker News"></a>
-  <a href="https://github.com/dubinc/dub/blob/main/LICENSE.md">
-    <img src="https://img.shields.io/github/license/dubinc/dub?label=license&logo=github&color=f80&logoColor=fff" alt="License" />
-  </a>
-</p>
+---
 
-<br/>
+## What’s changed from upstream Dub
 
-## Introduction
+### Local-first infrastructure (no required managed accounts)
+DubSH is designed to run with self-hosted services:
 
-Dub is the modern, open-source link attribution platform for [short links](https://dub.co/home), [conversion tracking](https://dub.co/analytics), and [affiliate programs](https://dub.co/partners).
+| Component | Dub (upstream) | DubSH (self-host) |
+|---|---|---|
+| Database | PlanetScale (MySQL) | **MySQL** via Docker Compose |
+| Redis | Upstash | **Redis** via Docker Compose |
+| Analytics | Tinybird | **ClickHouse** optional (local target) |
+| Email | Resend (often) | **Mailpit** (local) or **any SMTP** |
+| Storage | Cloud storage assumptions | **Local filesystem** or **S3** |
+| OG image picker | Unsplash | **Local stock images** |
 
-Our platform powers 100M+ clicks and 2M+ links monthly, and is used by world-class marketing teams from companies like Twilio, Buffer, Framer, Perplexity, Vercel, Laravel, and [more](https://dub.co/customers).
+### Storage options: Local filesystem **or** S3
+Storage is configurable via environment variables:
 
-## Tech Stack
+- `STORAGE_DRIVER=local`  
+  Files are stored on disk under `STORAGE_LOCAL_DIR` and served via:
+  `GET /storage/<bucket>/<path...>`
 
-- [Next.js](https://nextjs.org/) – framework
-- [TypeScript](https://www.typescriptlang.org/) – language
-- [Tailwind](https://tailwindcss.com/) – CSS
-- [Prisma](https://www.prisma.io/) – ORM
-- [Upstash](https://upstash.com/) – redis
-- [Tinybird](https://tinybird.com/) – analytics
-- [PlanetScale](https://planetscale.com/) – database
-- [NextAuth.js](https://next-auth.js.org/) – auth
-- [BoxyHQ](https://boxyhq.com/enterprise-sso) – SSO/SAML
-- [Turborepo](https://turbo.build/repo) – monorepo
-- [Stripe](https://stripe.com/) – payments
-- [Resend](https://resend.com/) – emails
-- [Vercel](https://vercel.com/) – deployments
+- `STORAGE_DRIVER=s3`  
+  Files are stored in S3 (or S3-compatible). Public objects can be returned as direct URLs
+  (if `STORAGE_PUBLIC_URL` is set) or proxied through `/storage/...` for private buckets.
 
-## Self-Hosting
+### SMTP options
+- Local dev: **Mailpit**
+- Production: configure **any SMTP provider/account** (host/port/user/pass)
 
-You can self-host Dub for greater control over your data and design. [Read this guide](https://dub.co/docs/self-hosting/guide) to learn more.
+### Unsplash removed for custom social cards
+The social/OG background picker uses local images instead of Unsplash.
 
-## Contributing
+Add images to:
+```
+apps/web/public/stock/
+```
 
-We love our contributors! Here's how you can contribute:
+---
 
-- [Open an issue](https://github.com/dubinc/dub/issues) if you believe you've encountered a bug.
-- Follow the [local development guide](https://dub.co/docs/local-development) to get your local dev environment set up.
-- Make a [pull request](https://github.com/dubinc/dub/pull) to add new features/make quality-of-life improvements/fix bugs.
+## Requirements
+- Docker + Docker Compose
+- (Optional for local dev) Node.js + pnpm
 
-### Recommended Versions
+---
 
-| Package | Version  |
-| ------- | -------- |
-| node    | v23.11.0 |
-| pnpm    | 9.15.9   |
+## Quick start (Docker Compose)
 
-### Common Local Development Issues
+### 1) Configure environment variables
 
-- `The table <table-name> does not exist in the current database.` - Run `pnpm prisma:push` push the state of the Prisma schema file to the database without using migrations files.
-- The project is not building correctly locally - verify your versions of `node` and `pnpm` match the recommended versions above. Delete all `node_modules`, `.next`, and `.turbo` directories in the `apps` and `packages` directory. You may now reinstall `node_modules` by running `pnpm install` and attempt to rebuild the project with `pnpm build`.
+You can use either:
+- a `.env` file in the repo root, **or**
+- container environment variables (Coolify, Portainer, etc.)
 
-## Repo Activity
+### Copy/paste environment block (Coolify / container platforms)
 
-![Dub repo activity – generated by Axiom](https://repobeats.axiom.co/api/embed/6ac4c94a89ea20e2e10032b932a128b6d8442e66.svg "Repobeats analytics image")
+```env
+############################################################
+# Core
+############################################################
+APP_URL=http://localhost:3000
+NODE_ENV=production
 
-## License
+# Database (compose default host is "mysql")
+DATABASE_URL=mysql://dub:dub@mysql:3306/dub
 
-Dub Technologies, Inc. is a commercial open-source company, which means some parts of this open-source repository require a commercial license. The concept is called "Open Core" where the core technology (99%) is fully open source, licensed under [AGPLv3](https://opensource.org/license/agpl-v3) and the last 1% is covered under a commercial license (["/ee" Enterprise Edition](<https://github.com/dubinc/dub/tree/ee/apps/web/app/(ee)>)) which we believe is entirely relevant for larger organisations that require enterprise features. Enterprise features are built by the core engineering team of Dub Technologies, Inc., which is hired full-time.
+# Redis (compose default host is "redis")
+REDIS_URL=redis://redis:6379
+
+############################################################
+# Storage (choose: local or s3)
+############################################################
+# local | s3
+STORAGE_DRIVER=local
+
+# Local storage
+# Mount a persistent volume here in production
+STORAGE_LOCAL_DIR=./storage
+
+# --- S3 settings (only if STORAGE_DRIVER=s3) ---
+# AWS: https://s3.amazonaws.com
+STORAGE_ENDPOINT=https://s3.amazonaws.com
+STORAGE_REGION=us-east-1
+
+# true for many S3-compatible providers; AWS typically false
+STORAGE_FORCE_PATH_STYLE=false
+
+STORAGE_ACCESS_KEY_ID=
+STORAGE_SECRET_ACCESS_KEY=
+
+STORAGE_PUBLIC_BUCKET=
+STORAGE_PRIVATE_BUCKET=
+
+# Optional: If set, public objects can be returned as direct URLs.
+# Example: https://your-public-bucket.s3.amazonaws.com
+STORAGE_PUBLIC_URL=
+
+############################################################
+# SMTP / Email
+############################################################
+# Local dev (Mailpit)
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_SECURE=false
+SMTP_FROM=no-reply@localhost
+
+# External SMTP example:
+# SMTP_HOST=smtp.yourprovider.com
+# SMTP_PORT=587
+# SMTP_USER=your-user
+# SMTP_PASSWORD=your-pass
+# SMTP_SECURE=false
+# SMTP_FROM=no-reply@yourdomain.com
+
+############################################################
+# Analytics (optional)
+############################################################
+CLICKHOUSE_URL=http://clickhouse:8123
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=
+CLICKHOUSE_DATABASE=default
+
+############################################################
+# Security
+############################################################
+AUTH_SECRET=change-this-to-a-long-random-string
+
+############################################################
+# Platform / Proxy
+############################################################
+TRUST_PROXY=true
+LOCAL_MODE=true
+```
+
+**Coolify note:** container environment variables **override** values in `.env`.
+
+---
+
+### 2) Start the stack
+
+From the repo root:
+
+```bash
+docker compose up -d --build
+```
+
+Tail app logs:
+
+```bash
+docker compose logs -f app
+```
+
+---
+
+## Service URLs (defaults)
+
+| Service | URL |
+|---|---|
+| App | http://localhost:3000 |
+| Mailpit UI | http://localhost:8025 |
+| MySQL | localhost:3306 |
+| Redis | localhost:6379 |
+| ClickHouse | http://localhost:8123 |
+
+---
+
+## Adding custom OG/social background images
+Drop images into:
+
+```
+apps/web/public/stock/
+```
+
+They will appear in the OG image picker UI.
+
+---
+
+## Git & Windows notes
+
+### “LF will be replaced by CRLF”
+This warning is normal on Windows and safe to ignore.
+
+### GitHub rejects push (“fetch first”)
+If GitHub rejects your push:
+
+```bash
+git pull origin main --allow-unrelated-histories
+git push
+```
+
+---
+
+## Credits
+Based on the upstream **Dub** project, adapted for self-hosting with reduced external dependencies and container-friendly deployment.

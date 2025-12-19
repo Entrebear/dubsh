@@ -1,6 +1,6 @@
 {
   "name": "dub-monorepo",
-  "version": "0.0.2-local",
+  "version": "1.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
