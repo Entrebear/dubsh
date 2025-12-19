@@ -8,7 +8,8 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl bash curl
 
 # Enable pnpm via corepack
-RUN corepack enable
+RUN corepack enable \
+  && corepack prepare pnpm@9.12.3 --activate
 
 # Copy repo
 COPY . .

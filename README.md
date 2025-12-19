@@ -1,4 +1,4 @@
-# DubSH v1.0.0 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.2 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
