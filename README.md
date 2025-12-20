@@ -1,4 +1,4 @@
-# DubSH v1.0.2 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.4 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
@@ -202,3 +202,9 @@ git push
 
 ## Credits
 Based on the upstream **Dub** project, adapted for self-hosting with reduced external dependencies and container-friendly deployment.
+
+
+### App Port
+The Docker Compose file maps the container port `3000` to a host port controlled by `APP_PORT`.
+- Default: `4455`
+- Override example: `APP_PORT=8080`
