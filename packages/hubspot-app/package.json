@@ -1,6 +1,6 @@
 {
   "name": "dub-hubspot-app",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "HubSpot app for Dub",
   "private": true,
   "type": "module",

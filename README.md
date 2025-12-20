@@ -1,4 +1,4 @@
-# DubSH v1.0.4 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.5 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
@@ -208,3 +208,38 @@ Based on the upstream **Dub** project, adapted for self-hosting with reduced ext
 The Docker Compose file maps the container port `3000` to a host port controlled by `APP_PORT`.
 - Default: `4455`
 - Override example: `APP_PORT=8080`
+
+
+## Coolify Deployment (Monorepo / Next.js)
+
+Use the following settings in **Coolify → Application Settings**:
+
+**Root Directory**
+```
+apps/web
+```
+
+**Install Command**
+```
+cd ../.. && pnpm install --frozen-lockfile
+```
+
+**Build Command**
+```
+pnpm prisma:generate && next build
+```
+
+**Start Command**
+```
+next start
+```
+
+**Build Pack**
+- Use **Nixpacks** (default)
+- If pnpm issues persist, switch to **Dockerfile**
+
+**Environment Variables**
+- Set all required variables directly in Coolify
+- `.env.production` is included as a fallback for `dotenv-flow`
+- Environment variables defined in Coolify override `.env.production`
+
