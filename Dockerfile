@@ -9,7 +9,7 @@ RUN apt-get update -y \
 RUN corepack enable
 WORKDIR /app
 
-# Ensure dotenv-flow resolves .env.production during build steps
+# Ensure dotenv-flow uses production env pattern
 ENV NODE_ENV=production
 
 # Copy workspace manifests for caching
@@ -17,7 +17,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages ./packages
 
-# Use a modern pnpm (compatible with lockfile)
+# Use modern pnpm
 RUN corepack prepare pnpm@10.26.1 --activate
 
 # Install deps at monorepo root
@@ -26,9 +26,12 @@ RUN pnpm install --frozen-lockfile
 # Copy rest of repo
 COPY . .
 
-# Build ALL workspace packages so Next can resolve @dub/* dist outputs
+# Build only the workspace packages required by the Next.js app
+# (Avoid building packages like @dub/cli which have incompatible build scripts)
 WORKDIR /app
-RUN pnpm -r --filter "./packages/**" run build --if-present
+RUN pnpm --filter @dub/utils build \
+  && pnpm --filter @dub/ui build \
+  && pnpm --filter @dub/embed-react build
 
 # Build Next.js app
 WORKDIR /app/apps/web
