@@ -9,15 +9,28 @@ RUN apt-get update -y \
 RUN corepack enable
 WORKDIR /app
 
+# Ensure dotenv-flow resolves .env.production during build steps
+ENV NODE_ENV=production
+
+# Copy workspace manifests for caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages ./packages
 
-RUN corepack prepare pnpm@9.12.3 --activate
+# Use a modern pnpm (compatible with lockfile)
+RUN corepack prepare pnpm@10.26.1 --activate
+
+# Install deps at monorepo root
 RUN pnpm install --frozen-lockfile
 
+# Copy rest of repo (including apps/web/.env.production placeholders)
 COPY . .
 
+# Build workspace packages that web imports (they export dist/*)
+WORKDIR /app
+RUN pnpm --filter @dub/utils build && pnpm --filter @dub/ui build
+
+# Build Next.js app
 WORKDIR /app/apps/web
 RUN pnpm prisma:generate && pnpm next build
 
@@ -27,7 +40,7 @@ RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 WORKDIR /app
 ENV NODE_ENV=production
 
