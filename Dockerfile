@@ -23,12 +23,12 @@ RUN corepack prepare pnpm@10.26.1 --activate
 # Install deps at monorepo root
 RUN pnpm install --frozen-lockfile
 
-# Copy rest of repo (including apps/web/.env.production placeholders)
+# Copy rest of repo
 COPY . .
 
-# Build workspace packages that web imports (they export dist/*)
+# Build ALL workspace packages so Next can resolve @dub/* dist outputs
 WORKDIR /app
-RUN pnpm --filter @dub/utils build && pnpm --filter @dub/ui build
+RUN pnpm -r --filter "./packages/**" run build --if-present
 
 # Build Next.js app
 WORKDIR /app/apps/web

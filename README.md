@@ -1,4 +1,4 @@
-# DubSH v1.0.8 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.9 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
@@ -258,3 +258,7 @@ During builds, `dotenv-flow` expects `.env*` files inside `apps/web/`. This repo
 ## Monorepo build (Dockerfile)
 
 The web app imports workspace packages like `@dub/ui` and `@dub/utils` which publish their build output in `dist/`. The Dockerfile builds these packages before running `next build`.
+
+
+### Docker build note
+The Dockerfile runs `pnpm -r --filter "./packages/**" run build --if-present` before `next build` to ensure workspace packages (e.g. `@dub/ui`, `@dub/utils`, `@dub/embed-react`) are compiled and resolvable.
