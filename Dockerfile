@@ -1,26 +1,27 @@
-FROM node:20-alpine
+# syntax=docker/dockerfile:1.6
+FROM node:20-bookworm-slim AS base
 
-# Dub (Next.js) self-host image.
-# This image intentionally keeps the build/runtime simple for VPS deployments.
-
+RUN corepack enable
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat openssl bash curl
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages ./packages
 
-# Enable pnpm via corepack
-RUN corepack enable \
-  && corepack prepare pnpm@9.12.3 --activate
-
-# Copy repo
-COPY . .
-
-# Install dependencies
+RUN corepack prepare pnpm@9.12.3 --activate
 RUN pnpm install --frozen-lockfile
 
-# Add entrypoint
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY . .
 
-EXPOSE 8888
+WORKDIR /app/apps/web
+RUN pnpm prisma:generate && pnpm next build
 
-ENTRYPOINT ["/entrypoint.sh"]
+FROM node:20-bookworm-slim AS runner
+RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=base /app /app
+WORKDIR /app/apps/web
+EXPOSE 3000
+CMD ["pnpm", "next", "start", "-p", "3000"]

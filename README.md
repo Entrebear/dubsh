@@ -1,4 +1,4 @@
-# DubSH v1.0.5 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.6 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
@@ -243,3 +243,8 @@ next start
 - `.env.production` is included as a fallback for `dotenv-flow`
 - Environment variables defined in Coolify override `.env.production`
 
+
+
+## Docker Compose Notes
+- App container built from root Dockerfile
+- Default port: 4455 (override with APP_PORT)
