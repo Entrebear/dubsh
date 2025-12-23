@@ -6727,7 +6727,7 @@ packages:
   arg@5.0.2:
     resolution: {integrity: sha512-PYjyFOLKQ9y57JvQ6QLo8dAgNqswh8M1RMJYdQduT6xbWSgK36P/Z/v+p888pM69jMMfS8Xd8F6I1kQ/I9HUGg==}
 
-  argparse@1.0.10:
+  argparse@1.0.11:
     resolution: {integrity: sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==}
 
   argparse@2.0.1:
@@ -9360,7 +9360,7 @@ packages:
     resolution: {integrity: sha512-cTIB4yPYL/Grw0EaSzASzg6bBy9gqCofvWN8okThAYIxKJZC+udlRAmGbM0XLeniEJSs8uEgHPGuHSe1XsOLSQ==}
     engines: {node: '>=6'}
 
-  is-generator-function@1.0.10:
+  is-generator-function@1.0.11:
     resolution: {integrity: sha512-jsEjy9l3yiXEQ+PsXdmBwEPcOxaXWLspKdplFUVI9vq1iZgIekeC0L167qeu86czQaxed3q/Uzuw0swL0irL8A==}
     engines: {node: '>= 0.4'}
 
@@ -21143,7 +21143,7 @@ snapshots:
 
   arg@5.0.2: {}
 
-  argparse@1.0.10:
+  argparse@1.0.11:
     dependencies:
       sprintf-js: 1.0.3
 
@@ -24362,7 +24362,7 @@ snapshots:
 
   is-generator-fn@2.1.0: {}
 
-  is-generator-function@1.0.10:
+  is-generator-function@1.0.11:
     dependencies:
       has-tostringtag: 1.0.2
 
@@ -24998,7 +24998,7 @@ snapshots:
 
   js-yaml@3.14.1:
     dependencies:
-      argparse: 1.0.10
+      argparse: 1.0.11
       esprima: 4.0.1
 
   js-yaml@4.1.0:
@@ -29588,7 +29588,7 @@ snapshots:
     dependencies:
       inherits: 2.0.4
       is-arguments: 1.2.0
-      is-generator-function: 1.0.10
+      is-generator-function: 1.0.11
       is-typed-array: 1.1.13
       which-typed-array: 1.1.15
     optional: true
@@ -29914,7 +29914,7 @@ snapshots:
       is-async-function: 2.0.0
       is-date-object: 1.0.5
       is-finalizationregistry: 1.0.2
-      is-generator-function: 1.0.10
+      is-generator-function: 1.0.11
       is-regex: 1.1.4
       is-weakref: 1.0.2
       isarray: 2.0.5

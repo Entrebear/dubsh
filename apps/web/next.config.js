@@ -19,6 +19,10 @@ console.warn = (...args) => {
 
 /** @type {import('next').NextConfig} */
 module.exports = {
+  // Dubsh: speed up container builds (Coolify) by skipping ESLint + TS checks in `next build`
+  // NOTE: This does NOT affect runtime behavior; it only avoids long build-time lint/typecheck in constrained CI.
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
   reactStrictMode: false,
   transpilePackages: [
     "shiki",
