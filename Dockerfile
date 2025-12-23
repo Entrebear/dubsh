@@ -23,15 +23,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages ./packages
 
 # Install deps (allow native build scripts required by Next/Prisma)
-RUN pnpm install --frozen-lockfile \
-  --allow-build=@prisma/client \
-  --allow-build=@prisma/engines \
-  --allow-build=@swc/core \
-  --allow-build=esbuild \
-  --allow-build=sharp \
-  --allow-build=sqlite3 \
-  --allow-build=protobufjs \
-  --allow-build=prisma
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the repo
 COPY . .
