@@ -1,4 +1,4 @@
-# DubSH v1.0.12 — Self‑Hosted Dub with Local Services & Docker Compose
+# DubSH v1.0.13 — Self‑Hosted Dub with Local Services & Docker Compose
 
 DubSH is a self‑hosting focused fork of the Dub URL shortener that keeps the **Next.js** app, but makes it practical to run without a pile of managed third‑party accounts.
 
@@ -266,3 +266,7 @@ The Dockerfile runs `pnpm -r --filter "./packages/**" run build --if-present` be
 
 ### Docker build note (workspace packages)
 The Dockerfile builds only the workspace packages required by the web app (`@dub/utils`, `@dub/ui`, `@dub/embed-react`) before running `next build`. This avoids building optional packages (like `@dub/cli`) that can fail in container builds.
+
+
+### Build reliability (npm registry)
+If your host uses an npm proxy/mirror that intermittently serves 404s or integrity mismatches, this repo includes a root `.npmrc` and Dockerfile config to force the official npm registry and increase fetch retries.

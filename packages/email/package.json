@@ -1,6 +1,6 @@
 {
   "name": "@dub/email",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "private": true,
   "main": "./src/index.ts",
   "scripts": {

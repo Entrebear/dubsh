@@ -1,41 +1,55 @@
 # syntax=docker/dockerfile:1.6
-FROM node:20-bookworm-slim AS app
+FROM node:20-bookworm-slim AS base
 
-# System deps (Prisma needs OpenSSL)
+# Prisma needs OpenSSL
 RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Use a known pnpm version (matches pnpm-lock.yaml)
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
-
 WORKDIR /app
-
-# Make builds reproducible and quieter
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy workspace manifests first for better Docker layer caching
+# Copy workspace manifests for caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY .npmrc .npmrc
 COPY apps/web/package.json apps/web/package.json
-
-# Copy workspace packages needed for dependency graph resolution
 COPY packages ./packages
 
-# Install deps (allow native build scripts required by Next/Prisma)
-RUN pnpm install --frozen-lockfile
+# Force official npm registry (avoids proxy/mirror 404s) + increase fetch retries
+RUN pnpm config set registry https://registry.npmjs.org/ \
+  && pnpm config set fetch-retries 5 \
+  && pnpm config set fetch-retry-factor 2 \
+  && pnpm config set fetch-retry-mintimeout 10000 \
+  && pnpm config set fetch-retry-maxtimeout 60000
 
-# Copy the rest of the repo
+# Install deps at monorepo root (retry once on transient registry errors)
+RUN pnpm install --frozen-lockfile || pnpm install --frozen-lockfile
+
+# Copy rest of repo
 COPY . .
 
-# Build internal workspace packages that Next imports directly
+# Build only the workspace packages required by the Next.js app
+WORKDIR /app
 RUN pnpm --filter @dub/utils build \
   && pnpm --filter @dub/ui build \
   && pnpm --filter @dub/embed-react build
 
-# Build the Next.js app
+# Build Next.js app (skip lint to reduce CI build time)
 WORKDIR /app/apps/web
 RUN pnpm prisma:generate && pnpm next build --no-lint
 
+FROM node:20-bookworm-slim AS runner
+
+RUN apt-get update -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=base /app /app
+WORKDIR /app/apps/web
 EXPOSE 3000
 CMD ["pnpm", "next", "start", "-p", "3000"]
