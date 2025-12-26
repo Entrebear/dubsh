@@ -6,7 +6,7 @@ RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -23,8 +23,10 @@ RUN pnpm config set registry https://registry.npmjs.org/ \
   && pnpm config set fetch-retry-mintimeout 10000 \
   && pnpm config set fetch-retry-maxtimeout 60000
 
-# Install deps at monorepo root (retry once on transient registry errors)
-RUN pnpm install --frozen-lockfile || pnpm install --frozen-lockfile
+# Install deps at monorepo root.
+# Use the lockfile when possible, but fall back to a non-frozen install if the
+# registry returns a bad tarball/integrity/404 for a specific version.
+RUN pnpm install --prefer-frozen-lockfile || pnpm install --no-frozen-lockfile
 
 # Copy rest of repo
 COPY . .
@@ -45,7 +47,7 @@ RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+RUN corepack enable && corepack prepare pnpm@10.26.2 --activate
 WORKDIR /app
 ENV NODE_ENV=production
 
