@@ -1,6 +1,6 @@
 {
   "name": "dub-monorepo",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
@@ -33,5 +33,10 @@
   "resolutions": {
     "chrono-node": "2.7.5"
   },
-  "packageManager": "pnpm@10.26.1"
+  "packageManager": "pnpm@10.26.2",
+  "pnpm": {
+    "overrides": {
+      "ecdsa-sig-formatter": "1.0.11"
+    }
+  }
 }

@@ -26,7 +26,10 @@ RUN pnpm config set registry https://registry.npmjs.org/ \
 # Install deps at monorepo root.
 # Use the lockfile when possible, but fall back to a non-frozen install if the
 # registry returns a bad tarball/integrity/404 for a specific version.
-RUN pnpm install --prefer-frozen-lockfile || pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile \
+  || (echo "pnpm install failed (likely registry tarball 404/integrity). Removing lockfile and retrying..." \
+      && rm -f pnpm-lock.yaml \
+      && pnpm install)
 
 # Copy rest of repo
 COPY . .
